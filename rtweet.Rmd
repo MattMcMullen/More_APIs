@@ -1,0 +1,120 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+For instructions on how to get an rtweet API key, go here: https://rtweet.info, and then follow the instructions starting at "API authorization"
+
+
+```{r}
+library(tidyverse)
+library(rtweet)
+library(lubridate)
+library(textfeatures)
+
+```
+
+```{r}
+create_token(
+  app = "class_twitter_app",
+  consumer_key = "",
+  consumer_secret = "",
+  access_token = "",
+  access_secret = "")
+```
+
+
+```{r}
+tweets <- search_tweets("depressed", n = 1000)
+tweets
+```
+
+
+```{r}
+trump_tweets <- get_timelines("realDonaldTrump", n = 1000)
+trump_tweets
+```
+
+
+
+```{r}
+ts_plot(trump_tweets)
+```
+
+
+This extracts the hour that the tweet was created.
+```{r}
+
+trump_tweets %>% 
+  mutate(time = hour(created_at)) %>% 
+  count(time, sort = T)
+
+
+```
+
+But there's a problem. You can get the time zone the times are using with tz().
+```{r}
+tz(trump_tweets$created_at)
+
+```
+
+
+UTC is Coordinated Universal Time, but Trump in in Eastern Time in DC. In tz language, Eastern Time is called "America/New_York" (see here for a complete listing: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). We can use the correct time zone so it reflects what time it was when the tweet was actually created by using with_tz(time, "time_zone").
+
+
+```{r}
+
+
+trump_tweets$created_at
+
+with_tz(trump_tweets$created_at, "America/New_York")
+
+
+trump_tweets %>% 
+  arrange(created_at)
+
+trump_tweets %>% 
+  arrange(with_tz(created_at, "America/Denver"))
+
+
+```
+
+
+
+Compare the output you get below with the table above: It should be a 4 hours difference. But the table below accurately reflects when Trump tweeted in his own local time zone.
+```{r}
+
+
+trump_tweets %>% 
+  mutate(time = hour(with_tz(created_at, "America/New_York"))) %>% 
+  count(time, sort = T)
+
+
+```
+
+
+
+```{r}
+
+trump_tweets %>% 
+  mutate(time = hour(with_tz(created_at, "America/New_York"))) %>% 
+  ggplot(aes(time)) +
+  geom_freqpoly(binwidth = 1)
+
+```
+
+When is Trump's favorite time to tweet?
+
+```{r}
+textfeatures(trump_tweets)
+```
+
+
+
+
+
+
+
+
+
+

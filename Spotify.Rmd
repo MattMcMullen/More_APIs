@@ -1,0 +1,243 @@
+---
+title: "Music analysis with the Spotify API"
+output: html_notebook
+---
+
+```{r}
+library(spotifyr)
+library(tidyverse)
+library(plotly)
+```
+
+Go here to sign up. Get (free or paid) Spotify account if you don't have one.
+Then go to developer dashboard and set up an application:
+https://developer.spotify.com/my-applications/#!/applications
+
+
+
+```{r}
+
+Sys.setenv(SPOTIFY_CLIENT_ID = 'xxxxxxxxxxxxxxxxxxxxx')
+Sys.setenv(SPOTIFY_CLIENT_SECRET = 'xxxxxxxxxxxxxxxxxxxxx')
+access_token <- get_spotify_access_token()
+
+```
+
+
+Two methods to get all the data about an artist. The problem is that there are many artists who have similar names, and Spotify likes to check with you that it's getting the right artist. Method 1 is the primary way to get the data, but I have had some problems making it work. Method 2 is a little more work but has worked for me every time.
+
+Method 1
+
+You'll need the Console open to do the next step. Click on the little part of the Console that's showing below and you can bring it up (or go to the View menu and then Move Focus to Console, or press control-2). Then click run on the chunk below, and in response to the question, in the Console type The Beatles.
+
+Also, don't put any extra empty lines after the get_artist_audio_features() line.
+
+
+```{r}
+beatles <- get_artist_audio_features("The Beatles")
+```
+
+Method 2: 
+
+First execute this command with the artist name in quotes to see the possible artists. Check which row or line has the correct artist you want. Usually it will be the first row.
+```{r}
+get_artists("Kanye West")
+```
+
+Then follow the instructions in the comments below:
+
+```{r}
+artists <- get_artists("Kanye West")          # Replace "The Beatles" with the artist of your choice, typed as above
+albums <- get_albums(artists$artist_uri[1])      # Replace [1] with the row of the correct artist from above
+tracks <- get_album_tracks(albums)
+kanye <- albums %>%                                # Replace beatles with a variable name of your choice
+  full_join(tracks) %>% 
+  full_join(get_track_audio_features(tracks)) %>% 
+  full_join(get_album_popularity(albums)) %>% 
+  full_join(get_track_popularity(tracks))
+  
+
+```
+
+
+Look at the dataset by running the gllimpse() chunk below, or just clicking on the dataset in the Global Environment.
+```{r}
+glimpse(beatles)
+```
+
+
+Get the popularity of the tracks on Spotify.
+```{r}
+beatles %>% 
+  select(album_name, track_name, track_popularity) %>% 
+  arrange(-track_popularity)
+```
+
+
+It's a little harder to get just the albums by popularity. Notice that this lists the album names multiple times, one for each track, even though it's not showing the tracks. That's not what we want to see.
+```{r}
+beatles %>% 
+  select(album_name, album_popularity, album_release_date) %>% 
+  arrange(-album_popularity)
+```
+
+
+Use distinct() to just keep the distinct album names. If there are repetitions, like above, this will remove them. By default, distinct() gets rid of everything else (like album popularity), so use .keep_all = TRUE to keep everything else in the table.
+```{r}
+beatles %>% 
+  select(album_name, album_popularity, album_release_date) %>% 
+  arrange(-album_popularity) %>% 
+  distinct(album_name, .keep_all = TRUE) 
+```
+
+
+
+There's a problem: Some of the Albums are compilations. And the Beatles didn't have any albums after 1970. I think we can keep the core albums and get rid of all the others by setting album_release_date < 1971, which will keep their final album, Let It Be, and getting everything earlier than that.
+
+
+**change this to get only the core albums and include only those**
+
+
+
+```{r}
+beatles %>% 
+  select(album_name, album_popularity, album_release_date) %>% 
+  filter(album_release_date < 1971) %>% 
+  arrange(album_release_date) %>% 
+  distinct(album_name, .keep_all = TRUE) 
+
+```
+
+
+
+Now put the set of pre-1971 albums into a new variable called beatles_core.
+
+```{r}
+beatles_core <- beatles %>% 
+    filter(album_release_date < 1971)
+
+```
+
+
+
+Now re-run the earlier list of albums on the new, narrowed data set.
+```{r}
+beatles_core %>% 
+  select(album_name, album_popularity, album_release_date) %>% 
+  arrange(-album_popularity) %>% 
+  distinct(album_name, .keep_all = TRUE) 
+```
+
+The two most popular Beatles albums are Abbey Road and The Beatles (White album), and the two least popular are Yellow Submarine and Sgt. Peppers.
+
+
+Graph the albums by popularity and release date:
+```{r}
+ggplot(beatles_core, aes(x = album_release_date, y = album_popularity)) +
+  geom_col() +
+  coord_flip()
+```
+
+```{r}
+beatles_core %>% 
+  plot_ly(y = ~album_release_date, x = ~album_popularity)
+```
+
+
+
+```{r}
+ggplot(beatles_core, aes(x = album_release_year, y = album_popularity)) +
+  geom_point()
+```
+
+
+```{r}
+ggplot(beatles_core, aes(x = album_release_year, y = track_popularity, color = album_name)) +
+  geom_jitter()
+```
+
+
+```{r}
+
+beatles_core %>% 
+  plot_ly(x = ~album_release_year, y = ~track_popularity)
+
+```
+
+
+
+Spotify includes audio analysis of every track: Things like energy (loudness, tempo, etc.), valence (if it's positive and happy) etc. Here's a guide to the measures: https://developer.spotify.com/documentation/web-api/reference/tracks/get-audio-features/
+
+
+Try several of the audio measures and see which ones relate to each other or relate to popularity.
+```{r}
+ggplot(beatles_core, aes(x = speechiness, y = track_popularity)) +
+  geom_point() +
+  geom_smooth(method = lm)
+```
+
+
+
+```{r}
+beatles_core %>% 
+  plot_ly(x = ~valence, y = ~track_popularity, color = ~mode)
+
+```
+
+
+You can ask things like whether energy is correlated with loudness, which the graph below shows is true.
+
+```{r}
+ggplot(beatles_core, aes(x = energy, y = loudness)) +
+  geom_point()
+```
+
+
+
+```{r}
+beatles_core %>% 
+  plot_ly(x = ~energy, y = ~loudness)
+```
+
+
+
+
+
+
+Plot some of the other musical measures against one another. 
+
+
+
+
+```{r}
+prince <- get_artist_audio_features("Prince")
+```
+
+
+
+```{r}
+prince %>% 
+  select(album_name, track_name, track_popularity) %>% 
+  arrange(-track_popularity)
+```
+
+
+```{r}
+prince %>% 
+  select(album_name, album_popularity, album_release_date) %>% 
+  arrange(-album_popularity) %>% 
+  distinct(album_name, .keep_all = TRUE) 
+```
+
+
+
+
+
+If you know a username, you can get info on their playlists:
+```{r}
+obama <- get_user_audio_features("barackobama")
+
+obama
+```
+
+
