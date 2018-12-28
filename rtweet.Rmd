@@ -1,113 +1,256 @@
 ---
-title: "R Notebook"
+title: "rtweet"
 output: html_notebook
 ---
 
-For instructions on how to get an rtweet API key, go here: https://rtweet.info, and then follow the instructions starting at "API authorization"
-
+This notebook introduces rtweet, which is a package that accesses data from twitter. You'll need a twitter account, and you'll need to create an app and then enter credentials below.
 
 ```{r}
 library(tidyverse)
-library(rtweet)
-library(lubridate)
-library(textfeatures)
-
+library(DT)
+library(plotly)
+library(rtweet)               # This package accesses Twitter data
+library(lubridate)            # Handles dates and times
 ```
+
+For instructions on how to get an rtweet API key, go here: https://rtweet.info, and then follow the instructions starting at "API authorization"
+
+It is important that you delete the keys and secrets from this code after you use them. Be sure not to publish them or save them in this notebook. 
 
 ```{r}
 create_token(
   app = "class_twitter_app",
   consumer_key = "",
-  consumer_secret = "",
-  access_token = "",
-  access_secret = "")
+  consumer_secret = "")
 ```
 
+Search for tweets about a topic. Let's search for tweets about Nancy Pelosi, the new speaker of the house. The term 'include_rts = F' will exclude retweets so we don't have the same tweet multiple times.
 
 ```{r}
-tweets <- search_tweets("depressed", n = 1000)
-tweets
+about_pelosi <- search_tweets("pelosi", n = 10000, include_rts = F)
 ```
 
+Create a chunk below with glimpse(about_pelosi). Take a moment and look at the data. For each tweet, there is a variety of information, like the *text* of the tweet, the *screen_name* of the person who created the tweet, the time and date it was *created_at*, any *hashtags* used, etc.
+
+
+
+
+
+
+What hashtags are people who are tweeting about Pelosi using?
 
 ```{r}
-trump_tweets <- get_timelines("realDonaldTrump", n = 1000)
-trump_tweets
-```
-
-
-
-```{r}
-ts_plot(trump_tweets)
-```
-
-
-This extracts the hour that the tweet was created.
-```{r}
-
-trump_tweets %>% 
-  mutate(time = hour(created_at)) %>% 
-  count(time, sort = T)
+about_pelosi %>% 
+  select(hashtags) %>%                          # Focus on the hashtags
+  unnest() %>%                                  # Separate any multiple hashtags in a single tweet 
+  mutate(hashtags = tolower(hashtags)) %>%      # make all hashtags lowercase
+  count(hashtags, sort=TRUE) %>%                # count how often they appear
+  datatable()                                   # create an interactive table
 
 
 ```
 
-But there's a problem. You can get the time zone the times are using with tz().
-```{r}
-tz(trump_tweets$created_at)
+What are the most popular tweets, as measured by the number of retweets, about Pelosi?
 
+```{r}
+about_pelosi %>% 
+  select(text, retweet_count) %>%     # select the text of the tweet and num of retweets
+  top_n(25) %>%                       # get the top 25 most popular tweets
+  arrange(-retweet_count) %>%         # sort in descending order of popularity
+  datatable()
 ```
 
 
-UTC is Coordinated Universal Time, but Trump in in Eastern Time in DC. In tz language, Eastern Time is called "America/New_York" (see here for a complete listing: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). We can use the correct time zone so it reflects what time it was when the tweet was actually created by using with_tz(time, "time_zone").
+**Get tweets from an individual**
 
+Nancy Pelosi's twitter account is @TeamPelosi. We can use rtweet to get recent tweets from Pelosi with get_timeline():
 
 ```{r}
-
-
-trump_tweets$created_at
-
-with_tz(trump_tweets$created_at, "America/New_York")
-
-
-trump_tweets %>% 
-  arrange(created_at)
-
-trump_tweets %>% 
-  arrange(with_tz(created_at, "America/Denver"))
-
-
+pelosi_tweets <- get_timeline("TeamPelosi", n = 10000)
 ```
 
 
 
-Compare the output you get below with the table above: It should be a 4 hours difference. But the table below accurately reflects when Trump tweeted in his own local time zone.
+**How often does Pelosi tweet?**
+
+The variable created_at tells us when the tweet was created. Each observation looks like this: 2018-12-12 12:45:21. It has the date and the time. 
+
+We can use the lubridate package to extract elements like the date, the hour, or the day of the week. The code below uses date() to extract the date from created_at:
+
 ```{r}
-
-
-trump_tweets %>% 
-  mutate(time = hour(with_tz(created_at, "America/New_York"))) %>% 
-  count(time, sort = T)
-
-
+pelosi_tweets %>% 
+  group_by(day = date(created_at)) %>%    # extract the date, group by it
+  summarize(tweets_per_day = n())         # count the number of tweets each day
 ```
 
+Above, summarize() collects and present the number of tweets each day. If you use summarize() again on those, you can further collect those days together, and get the mean number of tweets per day.
 
+Create a new chunk below, copy-paste the code in the chunk above, and add the following line: summarize(mean(tweets_per_day)). Don't forget the pipe.
+
+
+
+
+
+
+
+
+
+
+
+The above should show how many times per day Pelosi tweets.
+
+We can also graph the number of tweets per day with the following code:
 
 ```{r}
-
-trump_tweets %>% 
-  mutate(time = hour(with_tz(created_at, "America/New_York"))) %>% 
-  ggplot(aes(time)) +
+pelosi_tweets %>% 
+  mutate(day = date(created_at)) %>% 
+  ggplot(aes(x = day)) +
   geom_freqpoly(binwidth = 1)
-
 ```
 
-When is Trump's favorite time to tweet?
+
+Let's clean up the graph a little:  
+1. Add a line to the ggplot() with theme_minimal(), which take away the grey background.
+2. Add this line: labs(y = "Number of tweets", title = "How often Nancy Pelosi tweets")  
+
+
+
+
+
+
+
+
+
+
+
+
+
+**Time of day of tweets**
+
+The hour() function from the lubridate package extracts the hour from created_at. Set pageLength to 24 in datatable - it doesn't look right in RStudio, but it will when published on a web page.
 
 ```{r}
-textfeatures(trump_tweets)
+pelosi_tweets %>% 
+  mutate(time = hour(created_at)) %>% 
+  count(time) %>% 
+  datatable(options = (list(pageLength = 24)), rownames = F)
 ```
+
+Is Pelosi really tweeting that much from midnight to 3 AM? We need to think about the time zone. You can get the time zone of created_at with the lubridate package's tz().
+
+```{r}
+tz(pelosi_tweets$created_at)
+
+```
+
+This tells us that the time zone the tweet is in is UTC, Coordinated Universal Time, which is the time in London. That's not the time zone Pelosi was is, it's the time zone all tweets are given. No matter what time it is in your local time zone, the time provided by rtweet is in UTC time.
+
+Pelosi is probably tweeting from Washington DC, which is in the Eastern time zone, called "America/New_York" (see here for a complete listing: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). She is from California, and so some of her tweets may be from there or elsewhere where she is not in DC, but let's assume for simplicity that she is always tweeting from the Eastern time zone.
+
+We can convert the time to a new time zone using with_tz(time, "time_zone"), where "time_zone" is the new time zone.
+
+```{r}
+pelosi_tweets %>% 
+  mutate(time = with_tz(created_at, "America/New_york")) %>% 
+  mutate(time = hour(time)) %>% 
+  count(time) %>% 
+  datatable(options = (list(pageLength = 24)), rownames = F)
+
+```
+
+The table above should make more sense: Not as many tweets in the middle of the night.
+
+Let's use plotly to create a histogram of the number of tweets at each hour of the day.
+
+
+```{r}
+pelosi_tweets %>% 
+  mutate(time = with_tz(created_at, "America/New_york")) %>%    # convert to Eastern time zone
+  mutate(time = hour(time)) %>%                                 # extract the hour
+  plot_ly(x = ~time) %>%                                        # create plotly graph
+  add_histogram()                                               # make histogram
+
+```
+
+To complete the graph above, add the following line:
+
+layout(title = "When Does Pelosi Tweet?", 
+         xaxis = list(title = "Time of Day (Eastern Time)"),
+         yaxis = list(title = "Number of Tweets"))
+
+
+
+
+
+
+
+
+         
+**Day of week of the tweets**
+         
+Let's apply the same technique as above to which days of the week Pelosi tweets. Use wday() to extract the day of the week the tweet was made from created_at. The term 'label = T' will cause the names for the days (Sun, Mon, etc.) to be used, rather than numbers.
+
+```{r}
+pelosi_tweets %>% 
+  mutate(Day = wday(created_at,           # find the weekday that the tweet was created
+                    label = T)) %>%       # use labels (Sun, Mon, etc) rather than numbers
+  count(Day) %>%                          # count the number of tweets each day
+  datatable(rownames = F)
+
+```
+
+
+
+Using the code above as a starting point, create a histogram with plotly of the number of tweets per weekday, like we did above for the number of tweets each hour.
+
+
+
+
+
+
+
+
+
+
+
+Let's finish with a really cool graph called a heatmap. The following will combine days of the week and hours of the day, and show how often the tweets occur.
+
+```{r}
+pelosi_tweets %>% 
+  mutate(day = wday(created_at, label = T)) %>% 
+  mutate(hour = hour(with_tz(created_at, "America/New_york"))) %>% 
+  plot_ly(x = ~day, y = ~hour) %>% 
+  add_histogram2d(nbinsx = 7, nbinsy = 24)
+
+```
+
+
+To finalize the graph, add a title and x and y axis labels.
+
+
+
+
+
+
+
+Assignment:
+
+1. Get Trump's tweets using get_timeline(). You don't need to use search_tweets() for this assignment.   
+2. Find which hashtags he uses most.  
+3. Make a table of the number of tweets each day, and find the overall average number of tweets per day.  
+4. Create a ggplot graphic of the number of tweets per day.  
+5. Create a table and a plotly histogram of the hour of the day that Trump tweets.  
+6. Create a table and a plotly histogram of the week days that Trump Tweets.  
+7. Create a plotly heatmap of the weekday and time of day that Trump tweets.  
+
+
+
+
+
+
+
+
+
 
 
 
